@@ -9,3 +9,6 @@ Day 1:
  - Getting familier with Flutter widgets
  - Build a todo app with Create, Delete and Edit functionality
 
+Day 2:
+ - How to use Hive a local database.
+ - How to setup firebase in android project and use firestore for saving data to the cloud

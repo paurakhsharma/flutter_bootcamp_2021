@@ -1,9 +1,13 @@
 import 'dart:io';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
   runApp(MyApp());
 }
 
@@ -29,12 +33,12 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   String text = 'Place holder text';
-  List<String> todos = [];
 
   final _textController = TextEditingController();
 
   @override
   Widget build(BuildContext context) {
+    final todoColl = FirebaseFirestore.instance.collection('todos');
     return Scaffold(
         appBar: AppBar(
           title: Text(kIsWeb ? 'Flutter todo web' : 'Flutter todo'),
@@ -44,91 +48,103 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
             children: [
               SizedBox(height: 10),
-              TextField(
-                controller: _textController,
-                decoration: InputDecoration(
-                  hintText: 'Walk the dog',
-                  border: OutlineInputBorder(),
-                  suffix: IconButton(
-                    icon: Icon(Icons.check),
-                    onPressed: () {
-                      setState(() {
-                        todos.add(text);
-                      });
-                      _textController.clear();
-                    },
+              SizedBox(
+                height: 50,
+                child: TextField(
+                  controller: _textController,
+                  decoration: InputDecoration(
+                    contentPadding: const EdgeInsets.all(8),
+                    hintText: 'Walk the dog',
+                    border: OutlineInputBorder(),
+                    suffix: IconButton(
+                      icon: Icon(Icons.check),
+                      onPressed: () {
+                        todoColl.add({'title': text});
+                        _textController.clear();
+                      },
+                    ),
                   ),
+                  onChanged: (value) {
+                    setState(() {
+                      text = value;
+                    });
+                  },
                 ),
-                onChanged: (value) {
-                  setState(() {
-                    text = value;
-                  });
-                },
               ),
               SizedBox(height: 60),
-              if (todos.isNotEmpty)
-                Expanded(
-                  child: ListView.separated(
-                    itemBuilder: (context, index) {
-                      return ListTile(
-                        tileColor: Colors.blue,
-                        title: Text(
-                          todos[index],
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
+              Expanded(
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: todoColl.snapshots(),
+                  builder: (context, shapshot) {
+                    if (!shapshot.hasData) {
+                      return Center(child: CircularProgressIndicator());
+                    }
+
+                    final documents = shapshot.data.docs;
+
+                    if (documents.isEmpty) {
+                      return Text('Noting in todo, please add new todo');
+                    }
+                    return ListView.separated(
+                      itemBuilder: (context, index) {
+                        return ListTile(
+                          tileColor: Colors.blue,
+                          title: Text(
+                            documents[index].data()['title'],
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                            ),
                           ),
-                        ),
-                        leading: IconButton(
-                          icon: Icon(Icons.edit),
-                          onPressed: () async {
-                            String editedText;
-                            await showDialog(
-                              context: context,
-                              builder: (context) {
-                                return AlertDialog(
-                                  title: Text('Edit todo'),
-                                  content: TextFormField(
-                                    initialValue: todos[index],
-                                    onChanged: (value) {
-                                      editedText = value;
-                                    },
-                                  ),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () {
-                                        Navigator.of(context).pop();
+                          leading: IconButton(
+                            icon: Icon(Icons.edit),
+                            onPressed: () async {
+                              String editedText;
+                              await showDialog(
+                                context: context,
+                                builder: (context) {
+                                  return AlertDialog(
+                                    title: Text('Edit todo'),
+                                    content: TextFormField(
+                                      initialValue:
+                                          documents[index].data()['title'],
+                                      onChanged: (value) {
+                                        editedText = value;
                                       },
-                                      child: Text('Save'),
                                     ),
-                                  ],
-                                );
-                              },
-                            );
-                            setState(() {
-                              todos[index] = editedText;
-                            });
-                          },
-                        ),
-                        trailing: IconButton(
-                          icon: Icon(
-                            Icons.delete,
-                            color: Colors.red,
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () {
+                                          Navigator.of(context).pop();
+                                        },
+                                        child: Text('Save'),
+                                      ),
+                                    ],
+                                  );
+                                },
+                              );
+                              todoColl
+                                  .doc(documents[index].id)
+                                  .update({'title': editedText});
+                            },
                           ),
-                          onPressed: () {
-                            setState(() {
-                              todos.removeAt(index);
-                            });
-                          },
-                        ),
-                      );
-                    },
-                    itemCount: todos.length,
-                    separatorBuilder: (context, index) => SizedBox(height: 2),
-                  ),
-                )
-              else
-                Text('Not item in todo')
+                          trailing: IconButton(
+                            icon: Icon(
+                              Icons.delete,
+                              color: Colors.red,
+                            ),
+                            onPressed: () {
+                              todoColl.doc(documents[index].id).delete();
+                            },
+                          ),
+                        );
+                      },
+                      itemCount: documents.length,
+                      separatorBuilder: (context, index) => SizedBox(height: 2),
+                    );
+                  },
+                ),
+              )
             ],
           ),
         ));
